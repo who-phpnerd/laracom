@@ -1,0 +1,90 @@
+networks:
+  my_app_network:
+
+services:
+  ### NGINX/PHP Container #########################################
+  app:
+    build:
+      #directory to search for the Dockerfile
+      context: .
+      #used so we can install custom php extensions; image is also defined in the Dockerfile
+      dockerfile: Dockerfile
+
+    container_name: my_app_app
+
+    #the environment file to get variables
+    env_file:
+      - .env
+
+    #laravel needs this
+    environment:
+      DB_HOST: ${DB_HOST}
+
+    #This section overrides the Dockerfiles settings (which is what you want for testing)
+    volumes:
+      #mounting entire git repo to the container (from:to)
+      - ./:/var/www/html
+
+      #mounting nginx config to the container (from:to)
+      - ./docker/nginx/default.conf:/etc/nginx/sites-enabled/default
+
+    networks:
+      - my_app_network
+
+    ports:
+      - "127.0.0.1:8080:80"
+      - "127.0.0.1:4433:443"
+
+    #we depend on these to start first
+    depends_on:
+      - mysql
+      - redis
+
+  ### Redis Container #########################################
+  redis:
+    image: redis
+    container_name: my_app_redis
+    ports:
+      - "127.0.0.1:63799:6379"
+    volumes:
+      - ./docker/redis/conf:/usr/local/etc/redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    restart: always
+    networks:
+      - my_app_network
+
+  ### MySQL Container #########################################
+  mysql:
+    image: mariadb:10.3.16
+    container_name: my_app_mysql
+    volumes:
+      - mysqldata:/var/lib/mysql
+
+    #if the container is stopped; restart it
+    restart: unless-stopped
+
+    #enable a shell in case we need to interact with mysql
+    tty: true
+
+    #using a different port in case you have multiple mysql instances
+    ports:
+      - "127.0.0.1:3306:${DB_PORT}"
+
+    #the environment file to get variables
+    env_file:
+      - .env
+
+    #the MySQL environment variables
+    environment:
+      MYSQL_DATABASE: "${DB_DATABASE}"
+      MYSQL_USER: "${DB_USERNAME}"
+      MYSQL_PASSWORD: "${DB_PASSWORD}"
+      MYSQL_ROOT_PASSWORD: "${DB_PASSWORD}"
+      SERVICE_TAGS: dev
+      SERVICE_NAME: mysql
+
+    networks:
+      - my_app_network
+volumes:
+  mysqldata:
+    driver: local
